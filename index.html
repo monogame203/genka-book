@@ -886,7 +886,8 @@ function modView(D){
     '<section class="panel"><h3>投稿コードから載せた作品<span class="count">'+gk.length+'点</span></h3><div>'+guestList+'</div></section>'+
     '<section class="panel"><h3>確認が必要なコメント<span class="count">'+q.length+'件</span></h3><div>'+list+'</div></section>'+
     '<section class="panel"><h3>自動チェックの設定</h3>'+
-      (S.fbMode?'<p class="check"><b>AIチェック（Gemini）：常にオン</b></p><p class="hint">すべてのコメントを、送信する前にAIが確認します。言い換えや伏せ字の悪口も止めます。AIが確認できなかったときは送信されません。</p>':
+      (S.fbMode?'<p class="check"><b>AIチェック（Gemini）：常にオン</b></p><p class="hint">すべてのコメントを、送信する前にAIが確認します。言い換えや伏せ字の悪口も止めます。AIが確認できなかったときは送信されません。</p>'+
+        '<div class="actions"><button class="btn sm" data-act="ai-test"'+(S.aiTesting?' disabled':'')+'>'+(S.aiTesting?'確認中…':'AIの接続をテスト')+'</button></div>'+(S.aiTest?'<p class="'+(S.aiTest.ok?'hint':'err')+'" style="overflow-wrap:anywhere">'+esc(S.aiTest.text)+'</p>':''):
       '<label class="check"><input type="checkbox" data-act="mod-ai"'+(m.ai!==false?' checked':'')+'>投稿前にClaudeで悪口・嫌がらせを判定する</label>'+
       '<p class="hint">オンにすると、言い換えや伏せ字の悪口も止められます。判定は投稿する人のClaudeの利用枠を使い、最初の1回だけ許可を求められます。許可されなかったときは、NGワードのチェックだけで投稿されます。</p>')+
       '<div class="field"><span>通報が何件集まったら自動で非表示にするか</span><div class="seg" role="group" aria-label="通報の件数">'+[1,2,3,5].map(function(n){return '<button data-act="mod-th" data-v="'+n+'" aria-pressed="'+(th===n)+'">'+n+'件</button>';}).join('')+'</div></div>'+
@@ -1036,7 +1037,7 @@ function postComment(wid){
   S.checking[wid]=true;sched();
   aiCheck(text).then(function(r){
     S.checking[wid]=false;
-    if(!r.ok){sched();return toast(r.retry?'AIのチェックができなかったため、送信できませんでした。少し時間をおいて、もう一度送ってください':'投稿できませんでした（'+r.reason+'）。相手を傷つけない表現に変えてください');}
+    if(!r.ok){sched();return toast(r.retry?'AIのチェックができなかったため、送信できませんでした（'+(S.aiErr||'原因不明')+'）。少し時間をおいて、もう一度送ってください':'投稿できませんでした（'+r.reason+'）。相手を傷つけない表現に変えてください');}
     commitComment(uid,wid,text);
   });
 }
@@ -1138,6 +1139,16 @@ var A={
     saveMod(m).then(function(){toast('NGワードを保存しました（'+m.words.length+'件）');});},
   seed:function(){seed();},
   'fb-login':function(){googleLogin();},
+  'ai-test':function(){if(S.aiTesting)return;S.aiTesting=true;S.aiTest=null;sched();
+    var raw='';
+    aiLoad().then(function(list){
+      var i=0,errs=[];
+      function next(){if(i>=list.length)return Promise.reject(new Error(errs.join(' / ')));var m=list[i++];
+        return m.generateContent('JSONだけで答えてください：{"ok": true}').then(function(r){raw=String(r.response.text()||'');return m.model;},function(e){errs.push(String(m.model||'').replace('models/','')+': '+String(e&&e.message||e).slice(0,160));return next();});}
+      return next();
+    }).then(function(model){S.aiTest={ok:true,text:'接続できました（'+String(model).replace(/^.*models\//,'')+'）。AIの返事：'+raw.slice(0,60)};},
+      function(e){S.aiTest={ok:false,text:'接続できませんでした：'+aiErrText(e)+'\n'+String(e&&e.message||e).slice(0,600)};})
+    .then(function(){S.aiTesting=false;sched();});},
   'fb-logout':function(){if(S.confirm!=='logout'){S.confirm='logout';toast('もう一度押すとログアウトします');sched();return;}S.confirm='';S.fb.auth.signOut().then(function(){location.reload();});},
   'clear-seed':function(){var ids=S.items.filter(function(x){return x.sample;}).map(function(x){return x.id;});
     Promise.all(ids.map(removeDoc)).then(function(){toast('サンプルを削除しました');}).catch(function(e){toast(failMsg(e));});}
@@ -1250,7 +1261,7 @@ var FB_AI_BASE='https://www.gstatic.com/firebasejs/11.9.1/';
 var aiModels=null;
 function aiLoad(){
   if(aiModels)return aiModels;
-  var cfg=window.GENKA_CONFIG||{},names=(cfg.aiModels&&cfg.aiModels.length)?cfg.aiModels:['gemini-2.5-flash-lite','gemini-2.5-flash','gemini-2.0-flash'];
+  var cfg=window.GENKA_CONFIG||{},names=['gemini-flash-lite-latest','gemini-flash-latest'].concat(cfg.aiModels||[],['gemini-2.5-flash-lite','gemini-2.5-flash']).filter(function(n,i,a){return n&&a.indexOf(n)===i;});
   aiModels=Promise.all([import(FB_AI_BASE+'firebase-app.js'),import(FB_AI_BASE+'firebase-ai.js')]).then(function(m){
     var app=m[0].initializeApp(cfg.firebase,'genka-ai'),ai=m[1].getAI(app,{backend:new m[1].GoogleAIBackend()});
     return names.map(function(n){return m[1].getGenerativeModel(ai,{model:n,generationConfig:{responseMimeType:'application/json',temperature:0}});});
@@ -1258,16 +1269,26 @@ function aiLoad(){
   aiModels.catch(function(){aiModels=null;});
   return aiModels;
 }
+function aiErrText(e){
+  var m=String(e&&(e.message||e.code)||e||'');
+  if(/API has not been used|is disabled|SERVICE_DISABLED|firebasevertexai|AI Logic/i.test(m)&&/403|disabled|not been used/i.test(m))return 'Firebase AI Logic が有効になっていません';
+  if(/API_KEY|api key|referer|blocked/i.test(m))return 'APIキーの制限で止められています';
+  if(/429|quota|RESOURCE_EXHAUSTED/i.test(m))return '無料で使える回数を超えました';
+  if(/404|not.?found/i.test(m))return 'AIのモデルが見つかりません';
+  if(/Failed to fetch|import|network/i.test(m))return 'AIの部品を読み込めませんでした';
+  return m.slice(0,120);
+}
 function geminiJson(prompt){
-  return aiLoad().then(function(list){
+  return aiLoad().catch(function(e){S.aiErr=aiErrText(e);throw e;}).then(function(list){
     var i=0;
     function next(err){
       if(i>=list.length)return Promise.reject(err||new Error('ai'));
       var m=list[i++];
       return m.generateContent(prompt).then(function(r){
-        var t=String(r.response.text()||'').replace(/^\s*```(?:json)?|```\s*$/g,'').trim();
-        return JSON.parse(t);
-      },function(e){var msg=String(e&&e.message||'');if(/404|not.?found|is not supported|deprecated/i.test(msg))return next(e);throw e;});
+        var t=String(r.response.text()||''),j=t.match(/\{[\s\S]*\}/);
+        if(!j)throw new Error('AIの返事を読み取れませんでした: '+t.slice(0,80));
+        S.aiErr='';return JSON.parse(j[0]);
+      },function(e){S.aiErr=aiErrText(e);var msg=String(e&&e.message||'');if(/40[34]|not.?found|not supported|deprecated|unavailable|503|500/i.test(msg))return next(e);throw e;});
     }
     return next();
   });

@@ -23,8 +23,8 @@ window.GENKA_CONFIG = {
   //   appId: "1:1234567890:web:abcdef"
   // },
 
-  // コメントのAIチェックに使う Gemini のモデル（上から順に試します。使えなくなったら新しい名前に変えてください）
-  aiModels: ["gemini-2.5-flash-lite", "gemini-2.5-flash"],
+  // コメントのAIチェックに使う Gemini のモデル（空なら最新の Flash-Lite → Flash の順に自動で試します。特定のモデルを使いたいときだけ名前を書きます）
+  aiModels: [],
 
   // 作成者（管理タブを使う人）のGoogleアカウントのメールアドレス。firestore.rules にも同じものを書きます。
   ownerEmails: ["liaowujiang940@gmail.com"]
