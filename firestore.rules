@@ -30,10 +30,13 @@ service cloud.firestore {
       }
     }
 
-    // いいね・スーパーいいね（各自が自分のドキュメントだけ書ける）
+    // いいね・スーパーいいね（Googleでログインした本人だけが書ける。1人1回にするため、ゲストは不可）
     match /likes/{uid} {
       allow read: if true;
-      allow write: if isOwner() || isSelf(uid);
+      allow delete: if isOwner() || isSelf(uid);
+      allow create, update: if isOwner()
+        || (isSelf(uid) && request.auth.token.firebase.sign_in_provider != 'anonymous'
+            && request.resource.data.g == true);
     }
 
     // コメント（各自が自分のドキュメントに最大150件。作成者は削除のために全員分を書ける）

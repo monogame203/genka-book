@@ -32,6 +32,16 @@
 3. 「ルール」タブを開き、このリポジトリの `firestore.rules` の中身を全部貼り付ける
 4. `YOUR_EMAIL@gmail.com` を **あなたの Google アカウントのメールアドレス** に書き換えて「公開」
 
+## 3.5 コメントのAIチェック（Gemini）を有効にする
+
+コメントは送信する前に必ず AI（Google の Gemini 無料版）が確認します。これを有効にしないと、コメントが送信できません。
+
+1. 左メニューから「AI Logic」（「Firebase AI Logic」）を開く
+   - 見つからないときは `https://console.firebase.google.com/project/genka-book/ailogic` を開く
+2. 「始める」（Get started）を押す
+3. 「Gemini Developer API」を選んで有効にする（無料。カード登録は不要）
+   - 「Vertex AI Gemini API」は有料プランが必要なので選ばない
+
 ## 4. 設定をページに入れる
 
 1. プロジェクトの概要（左上の歯車）→「プロジェクトの設定」→ 下の「マイアプリ」で `</>`（ウェブ）を押す
