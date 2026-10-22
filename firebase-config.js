@@ -26,6 +26,9 @@ window.GENKA_CONFIG = {
   // コメントのAIチェックに使う Gemini のモデル（空なら最新の Flash-Lite → Flash の順に自動で試します。特定のモデルを使いたいときだけ名前を書きます）
   aiModels: [],
 
+  // App Check（reCAPTCHA v3）のサイトキー。SETUP.md の「App Check」の手順で作ったら、ここに貼ります。空なら使いません。
+  appCheckSiteKey: "",
+
   // 作成者（管理タブを使う人）のGoogleアカウントのメールアドレス。firestore.rules にも同じものを書きます。
   ownerEmails: ["liaowujiang940@gmail.com"]
 };

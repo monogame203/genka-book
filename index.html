@@ -1,4 +1,4 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html><head><meta charset=utf8><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-S/LIBPwyEVRMii665e05zKEU8wMwCl7BVn8KPAR2Znc=' https://www.gstatic.com https://apis.google.com https://www.google.com https://www.recaptcha.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://www.gstatic.com https://*.googleusercontent.com; connect-src 'self' https://*.googleapis.com https://apis.google.com https://www.google.com https://www.recaptcha.net https://www.gstatic.com ; frame-src https://genka-book.firebaseapp.com https://accounts.google.com https://apis.google.com https://www.google.com https://www.recaptcha.net; base-uri 'none'; form-action 'none'; object-src 'none'"><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>作品原価帳</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -364,7 +364,7 @@ function removeDoc(id){
 function failMsg(e){
   if(e&&e.code==='local_full')return 'この端末の保存容量がいっぱいです。写真を外すか、使わない作品を削除してください。';
   if(e&&e.code==='invalid_argument'){if(!S.owner&&!S.local){S.readOnly=true;enterLocal();S.editing=null;sched();return 'この端末に保存するモードに切り替えました。お手数ですが、もう一度入力して保存してください。';}return '保存できませんでした。';}
-  if(e&&e.code==='permission-denied')return S.mod.blocked[S.uid]?'書き込みが制限されています。':'保存できませんでした（書き込みの権限がありません）。';
+  if(e&&e.code==='permission-denied')return S.mod.blocked[S.uid]?'書き込みが制限されています。':'保存できませんでした。入力内容が長すぎるか、続けて送りすぎています。少し待ってからもう一度お試しください。';
   if(e&&e.code==='resource-exhausted')return '今日の利用上限に達しました。時間をおいてお試しください。';
   if(e&&e.code==='quota_exceeded')return '保存容量がいっぱいです。不要なデータを削除してください。';
   return '保存できませんでした。通信状況を確認して、もう一度お試しください。';
@@ -469,7 +469,7 @@ function toggleReport(uid,cid){
   if(on)toast('通報しました。一定数の通報が集まると自動で非表示になります');
   enqueue('r',function(){
     var ref=S.db.doc('reports/'+S.uid);
-    return ref.get().then(function(d){var cur=Object.assign({},(d.exists&&(d.data()||{}).items)||{});if(on)cur[key]=true;else delete cur[key];return ref.set({items:cur});});
+    return ref.get().then(function(d){var cur=Object.assign({},(d.exists&&(d.data()||{}).items)||{});if(on)cur[key]=true;else delete cur[key];return ref.set(S.fbMode?{items:cur,t:ST()}:{items:cur});});
   }).catch(function(e){toast(failMsg(e));});
 }
 
@@ -656,6 +656,10 @@ function parseCode(raw){
 }
 function publishGuest(w){
   var wid='g_'+w.k;
+  if(S.fbMode){
+    var prev=(S.showRaw.guest||{})[wid];
+    return ratedCommit(function(b){b.set(S.db.doc('pub/guest__'+wid),{owner:'guest',wid:wid,name:w.name.slice(0,60),note:w.note.slice(0,400),price:w.price,by:w.by.slice(0,30),hasPhoto:false,pv:Date.now(),publishedAt:prev&&prev.publishedAt||Date.now(),t:ST()});}).then(function(){return !!prev;});
+  }
   return enqueue('s:guest',function(){
     var ref=S.db.doc('showcase/guest');
     return ref.get().then(function(d){
@@ -667,6 +671,7 @@ function publishGuest(w){
   });
 }
 function removeGuest(wid){
+  if(S.fbMode)return S.db.doc('pub/guest__'+wid).delete();
   return enqueue('s:guest',function(){
     var ref=S.db.doc('showcase/guest');
     return ref.get().then(function(d){var works=Object.assign({},(d.exists&&(d.data()||{}).works)||{});delete works[wid];return ref.set({works:works});});
@@ -904,7 +909,7 @@ function picFor(key,s){
   var ck=key+'@'+(s.pv||0);
   if(ck in S.pics)return S.pics[ck];
   S.pics[ck]='';
-  picFetch(function(){return S.db.doc('showcase/'+s.owner+'/ph/'+s.wid).get().then(function(d){S.pics[ck]=d.exists?safeImg((d.data()||{}).photo):'';sched();});});
+  picFetch(function(){return S.db.doc(S.fbMode?'pubph/'+s.owner+'__'+s.wid:'showcase/'+s.owner+'/ph/'+s.wid).get().then(function(d){S.pics[ck]=d.exists?safeImg((d.data()||{}).photo):'';sched();});});
   return '';
 }
 var picQ=[],picActive=0;
@@ -918,6 +923,15 @@ function picPump(){
 function syncShowcase(id,w,price){
   if(S.local||!S.uid||!S.db)return Promise.resolve();
   var uid=S.uid;
+  if(S.fbMode){
+    var key=uid+'__'+id,prev=(S.showRaw[uid]||{})[id],pref=S.db.doc('pub/'+key),phref=S.db.doc('pubph/'+key);
+    if(w.vis==='public'){
+      var doc={owner:uid,wid:id,name:String(w.name||'').slice(0,60),note:String(w.note||'').slice(0,400),price:Math.max(0,Math.min(10000000,Math.round(Number(price)||0))),hasPhoto:!!w.photo,pv:Date.now(),publishedAt:prev&&prev.publishedAt||Date.now(),t:ST()};
+      return ratedCommit(function(b){b.set(pref,doc);if(w.photo)b.set(phref,{owner:uid,photo:w.photo});else if(prev&&prev.hasPhoto)b.delete(phref);});
+    }
+    if(!prev)return Promise.resolve();
+    var bd=S.db.batch();bd.delete(pref);if(prev.hasPhoto)bd.delete(phref);return bd.commit();
+  }
   return enqueue('s:'+uid,function(){
     var ref=S.db.doc('showcase/'+uid);
     return ref.get().then(function(d){
@@ -975,9 +989,9 @@ function resync(col,uid,field,store){
    Team members keep it in likes/<id>; everyone else keeps it in this browser. */
 var LS_LIKES='genka-likes-v1',AD_MAX=5;
 function obj(v){return (v&&typeof v==='object'&&!Array.isArray(v))?v:{};}
-function normRec(v){v=obj(v);return {works:Object.assign({},obj(v.works)),supers:Object.assign({},obj(v.supers)),superAt:Object.assign({},obj(v.superAt)),day:typeof v.day==='string'?v.day:'',used:Number(v.used)||0,extra:Number(v.extra)||0};}
+function normRec(v){v=obj(v);var r={works:Object.assign({},obj(v.works)),supers:Object.assign({},obj(v.supers)),superAt:Object.assign({},obj(v.superAt)),day:typeof v.day==='string'?v.day:'',used:Number(v.used)||0,extra:Number(v.extra)||0};if(typeof v.dn==='number')r.dn=v.dn;if(typeof v.lastSup==='string')r.lastSup=v.lastSup;return r;}
 function myRec(){return S.myRec||(S.myRec=normRec(S.local?null:(S.uid&&S.likes[S.uid]?{works:S.likes[S.uid]}:null)));}
-function today(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function today(){if(S.fbMode){var j=new Date(Date.now()+324e5);return j.getUTCFullYear()+'-'+String(j.getUTCMonth()+1).padStart(2,'0')+'-'+String(j.getUTCDate()).padStart(2,'0');}var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function roll(r){if(r.day!==today()){r.day=today();r.used=0;r.extra=0;}return r;}
 function superLeft(){var r=roll(normRec(myRec()));return Math.max(0,1+r.extra-r.used);}
 function usedToday(){var r=roll(normRec(myRec()));return r.used;}
@@ -993,7 +1007,13 @@ function updateRec(fn){
   var uid=S.uid;
   return enqueue('l',function(){
     var ref=S.db.doc('likes/'+uid);
-    return ref.get().then(function(d){var cur=normRec(d.exists&&d.data());if(fn(cur)===false)return false;if(S.fbMode)cur.g=true;return ref.set(cur).then(function(){return true;});});
+    return ref.get().then(function(d){
+      var cur=normRec(d.exists&&d.data());
+      if(S.fbMode){var dn=jstDayNum();if(cur.dn!==dn){cur.used=0;cur.extra=0;cur.day=today();}cur.dn=dn;cur.extra=0;}
+      if(fn(cur)===false)return false;
+      if(S.fbMode){cur.g=true;cur.t=ST();}
+      return ref.set(cur).then(function(){return true;});
+    });
   }).catch(function(e){toast(failMsg(e));return false;});
 }
 function needGoogle(){return !!(S.fbMode&&S.fb&&(!S.fb.auth.currentUser||S.fb.auth.currentUser.isAnonymous));}
@@ -1012,7 +1032,7 @@ function superLike(wid){
   if(superLeft()<=0){S.confirm='';sched();return toast(adBridge()&&extraToday()<AD_MAX?'今日の分は使い切りました。広告を見るともう1回できます':'今日のスーパーいいねは使い切りました。明日また使えます');}
   if(S.confirm!=='s:'+wid){S.confirm='s:'+wid;sched();toast('もう一度★を押すとスーパーいいねを送ります（今日の残り'+superLeft()+'回）');clearTimeout(S.armT);S.armT=setTimeout(function(){if(S.confirm==='s:'+wid){S.confirm='';sched();}},4000);return;}
   S.confirm='';var at=Date.now();
-  updateRec(function(r){roll(r);if(1+r.extra-r.used<=0)return false;r.used++;r.supers[wid]=(Number(r.supers[wid])||0)+1;r.superAt[wid]=at;if(!r.works[wid])r.works[wid]=at;})
+  updateRec(function(r){roll(r);if(1+r.extra-r.used<=0)return false;r.used++;r.supers[wid]=(Number(r.supers[wid])||0)+1;r.superAt[wid]=at;r.lastSup=wid;if(!r.works[wid])r.works[wid]=at;})
     .then(function(ok){if(ok){toast('スーパーいいねを送りました。今日の残り'+superLeft()+'回');if(S.sguideOpen){S.sguideOpen=false;lsSet(LS_SG,'1');sched();}}});
 }
 function watchAd(){
@@ -1045,11 +1065,17 @@ function commitComment(uid,wid,text){
   var local=(S.comments[uid]||[]).slice();
   var c={id:newId('c'),workId:wid,text:text.slice(0,300),at:Date.now()};
   local.push(c);S.drafts[wid]='';S.comments[uid]=local;sched();
+  if(S.fbMode){
+    ratedCommit(function(b){b.set(S.db.doc('cmts/'+c.id),{uid:uid,workId:wid,text:c.text,at:c.at,t:ST()});})
+      .catch(function(e){toast(failMsg(e));S.comments[uid]=(S.comments[uid]||[]).filter(function(x){return x.id!==c.id;});sched();});
+    return;
+  }
   mutateComments(uid,function(cur){if(cur.some(function(x){return x.id===c.id;}))return null;if(cur.length>=COMMENT_CAP)return null;cur.push(c);return cur;})
     .catch(function(e){toast(failMsg(e));resync('comments',uid,'items',S.comments);});
 }
 function deleteComment(uid,cid){
   S.comments[uid]=(S.comments[uid]||[]).filter(function(c){return c.id!==cid;});sched();
+  if(S.fbMode){S.db.doc('cmts/'+cid).delete().catch(function(e){toast(failMsg(e));});return;}
   mutateComments(uid,function(cur){return cur.filter(function(c){return c.id!==cid;});})
     .catch(function(e){toast(failMsg(e));resync('comments',uid,'items',S.comments);});
 }
@@ -1197,6 +1223,7 @@ async function boot(){
   try{
     var use=window.claude&&window.claude.use;
     if(!use){
+      if(window.top!==window.self){root.innerHTML='<main class="wrap"><p class="lead">このページは <a href="https://monogame203.github.io/genka-book/" target="_top" rel="noopener">monogame203.github.io/genka-book</a> で開いてください。</p></main>';return;}
       var cfg=await loadConfig();
       if(cfg){try{await bootFirebase(cfg);return;}catch(e){S.db=null;S.user=null;S.uid=null;S.fbMode=false;S.fb=null;toast('みんなの作品に接続できませんでした。この端末に保存するモードで開きます');}}
       S.noShared=true;enterLocal();S.tab='works';S.ready=true;sched();return;
@@ -1217,13 +1244,18 @@ async function boot(){
   }catch(e){if(!S.ready){S.noShared=!S.db;enterLocal();S.tab='works';S.ready=true;}sched();}
 }
 function startListeners(){
+  if(S.fbMode){
+    listen(S.db.collection('pub'),function(snap){var raw={},flat={};snap.docs.forEach(function(d){var o=Object.assign({},d.data()||{});if(typeof o.owner!=='string'||typeof o.wid!=='string')return;delete o.t;(raw[o.owner]=raw[o.owner]||{})[o.wid]=o;flat[showKey(o.owner,o.wid)]=Object.assign({},o);});S.showRaw=raw;S.showcase=flat;loadNames();});
+    listen(S.db.collection('cmts'),function(snap){var m={};snap.docs.forEach(function(d){var v=d.data()||{};if(typeof v.uid!=='string'||typeof v.text!=='string')return;(m[v.uid]=m[v.uid]||[]).push({id:d.id,workId:v.workId,text:v.text,at:Number(v.at)||0});});S.comments=m;loadNames();});
+  }else{
     listen(S.db.collection('showcase'),function(snap){var raw={},flat={};snap.docs.forEach(function(d){var ws=(d.data()||{}).works||{};raw[d.id]=ws;Object.keys(ws).forEach(function(wid){var o=Object.assign({},ws[wid]);o.owner=d.id;o.wid=wid;flat[showKey(d.id,wid)]=o;});});S.showRaw=raw;S.showcase=flat;loadNames();});
+    listen(S.db.collection('comments'),function(snap){var m={};snap.docs.forEach(function(d){m[d.id]=(d.data()||{}).items||[];});S.comments=m;loadNames();});
+  }
     listen(S.db.collection('likes'),function(snap){
       var m={},sp={};snap.docs.forEach(function(d){var v=d.data()||{};if(S.fbMode&&v.g!==true)return;m[d.id]=obj(v.works);sp[d.id]=obj(v.supers);if(!S.local&&d.id===S.uid)S.myRec=normRec(v);});
       S.likes=m;S.supers=sp;
       if(S.local&&S.uid){var r=myRec();S.likes[S.uid]=r.works;S.supers[S.uid]=r.supers;}
     });
-    listen(S.db.collection('comments'),function(snap){var m={};snap.docs.forEach(function(d){m[d.id]=(d.data()||{}).items||[];});S.comments=m;loadNames();});
     listen(S.db.collection('reports'),function(snap){var m={};snap.docs.forEach(function(d){m[d.id]=(d.data()||{}).items||{};});S.reports=m;});
     listen(S.db.doc('mod/settings'),function(d){var v=(d&&d.exists&&d.data())||{};
       S.mod={words:Array.isArray(v.words)?v.words.filter(function(w){return typeof w==='string';}):[],ai:v.ai!==false,threshold:Number(v.threshold)||3,
@@ -1242,8 +1274,10 @@ async function bootFirebase(cfg){
   await loadScript(FB_BASE+'firebase-app-compat.js');
   await Promise.all([loadScript(FB_BASE+'firebase-auth-compat.js'),loadScript(FB_BASE+'firebase-firestore-compat.js')]);
   firebase.initializeApp(cfg.firebase);
+  if(cfg.appCheckSiteKey){await loadScript(FB_BASE+'firebase-app-check-compat.js');firebase.appCheck().activate(cfg.appCheckSiteKey,true);}
   var auth=firebase.auth(),fs=firebase.firestore();
   try{fs.settings({ignoreUndefinedProperties:true});}catch(e){}
+  if(cfg.emulator){auth.useEmulator('http://'+cfg.emulator.auth,{disableWarnings:true});var eh=cfg.emulator.firestore.split(':');fs.useEmulator(eh[0],Number(eh[1]));}
   try{await auth.getRedirectResult();}catch(e){if(e&&e.code==='auth/credential-already-in-use'&&e.credential){try{await auth.signInWithCredential(e.credential);}catch(x){}}}
   var u=await new Promise(function(res){var off=auth.onAuthStateChanged(function(x){off();res(x);});});
   if(!u)u=(await auth.signInAnonymously()).user;
@@ -1263,8 +1297,10 @@ function aiLoad(){
   if(aiModels)return aiModels;
   var cfg=window.GENKA_CONFIG||{},names=['gemini-flash-lite-latest','gemini-flash-latest'].concat(cfg.aiModels||[],['gemini-2.5-flash-lite','gemini-2.5-flash']).filter(function(n,i,a){return n&&a.indexOf(n)===i;});
   aiModels=Promise.all([import(FB_AI_BASE+'firebase-app.js'),import(FB_AI_BASE+'firebase-ai.js')]).then(function(m){
-    var app=m[0].initializeApp(cfg.firebase,'genka-ai'),ai=m[1].getAI(app,{backend:new m[1].GoogleAIBackend()});
-    return names.map(function(n){return m[1].getGenerativeModel(ai,{model:n,generationConfig:{responseMimeType:'application/json',temperature:0}});});
+    var app=m[0].initializeApp(cfg.firebase,'genka-ai');
+    var ready=cfg.appCheckSiteKey?import(FB_AI_BASE+'firebase-app-check.js').then(function(ac){ac.initializeAppCheck(app,{provider:new ac.ReCaptchaV3Provider(cfg.appCheckSiteKey),isTokenAutoRefreshEnabled:true});}):Promise.resolve();
+    return ready.then(function(){var ai=m[1].getAI(app,{backend:new m[1].GoogleAIBackend()});
+    return names.map(function(n){return m[1].getGenerativeModel(ai,{model:n,generationConfig:{responseMimeType:'application/json',temperature:0}});});});
   });
   aiModels.catch(function(){aiModels=null;});
   return aiModels;
@@ -1293,6 +1329,24 @@ function geminiJson(prompt){
     return next();
   });
 }
+function ST(){return firebase.firestore.FieldValue.serverTimestamp();}
+function jstDayNum(){return Math.floor((Date.now()+324e5)/864e5);}
+/* Publishing and comments must update rate/<me> in the same batch; the rules allow that once every 5 seconds.
+   Waits out the gap here, and retries once if the server still says too soon. */
+var lastRate=0;
+function ratedCommit(fill){
+  return enqueue('rate',function(){
+    function attempt(){
+      var b=S.db.batch();b.set(S.db.doc('rate/'+S.uid),{t:ST()});fill(b);
+      return b.commit().then(function(){lastRate=Date.now();});
+    }
+    var wait=Math.max(0,5600-(Date.now()-lastRate));
+    return new Promise(function(r){setTimeout(r,wait);}).then(attempt).catch(function(e){
+      if(!(e&&e.code==='permission-denied'))throw e;
+      return new Promise(function(r){setTimeout(r,6000);}).then(attempt);
+    });
+  });
+}
 function fbUser(fs){
   var cache={};
   function one(id){
@@ -1306,7 +1360,7 @@ function ensureName(){
   var n=String(S.nick||'').trim();
   if(!n)return '表示する名前を入力してください';
   if(ngHit(n))return '名前に不適切な言葉が含まれています';
-  if(n!==S.profileName){S.profileName=n;S.names[S.uid]=n;lsSet(LS_NICK,n);S.db.doc('profiles/'+S.uid).set({name:n.slice(0,30)}).catch(function(e){toast(failMsg(e));});}
+  if(n!==S.profileName){S.profileName=n;S.names[S.uid]=n;lsSet(LS_NICK,n);S.db.doc('profiles/'+S.uid).set({name:n.slice(0,30),t:ST()}).catch(function(e){toast(failMsg(e));});}
   return '';
 }
 function nameField(id){

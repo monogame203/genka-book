@@ -1,76 +1,161 @@
 rules_version = '2';
-// 作品原価帳 の Firestore セキュリティルール
-// 1. 下の OWNER_EMAILS を、作成者のGoogleアカウントのメールアドレスに書き換えてください。
+// 作品原価帳 の Firestore セキュリティルール（強化版）
+// 1. owners() のメールアドレスを、作成者のGoogleアカウントのメールアドレスにしてください。
 // 2. Firebase コンソール → Firestore Database → ルール に全文を貼り付けて「公開」を押します。
+//
+// 方針
+// - 書けるのは自分のデータだけ。すべての書き込みで、項目・型・長さを検査する
+// - 作品の公開・コメントは、rate/<自分> を同時に更新したときだけ通す（5秒に1回まで）
+// - いいねはGoogleログインした人だけ、1作品1回。スーパーいいねは日本時間で1日1回、1回に1つずつ
+// - ブロックされた人は公開・コメント・名前の変更ができない
+// - 上に書いていない場所は、すべて読み書き禁止
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function owners() { return ['YOUR_EMAIL@gmail.com']; }  // ← OWNER_EMAILS
+    function owners() { return ['liaowujiang940@gmail.com']; }
 
+    // ---------- 共通 ----------
     function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
     function isOwner() {
       return signedIn() && request.auth.token.email_verified == true
         && request.auth.token.email in owners();
     }
-    function isSelf(uid) { return signedIn() && request.auth.uid == uid; }
+    function isGoogle() {
+      return signedIn() && request.auth.token.firebase.sign_in_provider == 'google.com';
+    }
+    function isSelf(id) { return signedIn() && uid() == id; }
+    function data() { return request.resource.data; }
+    function str(v, min, max) { return v is string && v.size() >= min && v.size() <= max; }
+    function num(v, min, max) { return v is int && v >= min && v <= max; }
     function blocked() {
       let p = /databases/$(database)/documents/mod/settings;
-      return exists(p) && get(p).data.get('blocked', {}).get(request.auth.uid, false) == true;
+      return exists(p) && get(p).data.get('blocked', {}).get(uid(), false) == true;
     }
-    function selfWrite(uid) { return isOwner() || (isSelf(uid) && !blocked()); }
+    // このリクエストと同じバッチで rate/<自分> を今の時刻に更新しているか
+    function rated() {
+      return getAfter(/databases/$(database)/documents/rate/$(uid())).data.t == request.time;
+    }
+    // 日本時間の日付番号（1970-01-01 からの日数）
+    function jstDay() { return int((request.time.toMillis() + 32400000) / 86400000); }
 
-    // 公開中の作品（ユーザーごとに1ドキュメント）と写真
-    match /showcase/{uid} {
+    // ---------- 書き込みの間隔（5秒に1回） ----------
+    match /rate/{id} {
+      allow read: if isSelf(id);
+      allow create: if isSelf(id) && data().keys().hasOnly(['t']) && data().t == request.time;
+      allow update: if isSelf(id) && data().keys().hasOnly(['t']) && data().t == request.time
+        && resource.data.t + duration.value(5, 's') < request.time;
+    }
+
+    // ---------- 公開中の作品：pub/<持ち主>__<作品ID> ----------
+    function pubOk(id) {
+      let d = data();
+      return d.keys().hasOnly(['owner', 'wid', 'name', 'note', 'price', 'hasPhoto', 'pv', 'publishedAt', 'by', 't'])
+        && d.keys().hasAll(['owner', 'wid', 'name', 'price', 't'])
+        && str(d.owner, 1, 128) && str(d.wid, 1, 64) && id == d.owner + '__' + d.wid
+        && str(d.name, 1, 60) && str(d.get('note', ''), 0, 400)
+        && num(d.price, 0, 10000000) && d.get('hasPhoto', false) is bool
+        && d.get('pv', 0) is int && d.get('publishedAt', 0) is int
+        && str(d.get('by', ''), 0, 30) && d.t == request.time;
+    }
+    match /pub/{id} {
       allow read: if true;
-      allow write: if selfWrite(uid);   // showcase/guest（投稿コードの作品）は作成者だけ
-      match /ph/{wid} {
-        allow read: if true;
-        allow write: if selfWrite(uid)
-          && (request.resource == null || request.resource.data.photo.size() < 400000);
-      }
+      // 本人（ブロック中は不可）、または作成者（投稿コードの作品 owner == 'guest' も含む）
+      allow create, update: if pubOk(id) && rated()
+        && ((isSelf(data().owner) && !blocked()) || isOwner());
+      allow delete: if isSelf(resource.data.owner) || isOwner();
     }
-
-    // いいね・スーパーいいね（Googleでログインした本人だけが書ける。1人1回にするため、ゲストは不可）
-    match /likes/{uid} {
+    // 作品の写真（JPEG、約180KBまで）
+    match /pubph/{id} {
       allow read: if true;
-      allow delete: if isOwner() || isSelf(uid);
-      allow create, update: if isOwner()
-        || (isSelf(uid) && request.auth.token.firebase.sign_in_provider != 'anonymous'
-            && request.resource.data.g == true);
+      allow create, update: if data().keys().hasOnly(['owner', 'photo'])
+        && id.matches('^' + data().owner + '__.+')
+        && str(data().photo, 30, 250000)
+        && data().photo.matches('^data:image/jpeg;base64,[A-Za-z0-9+/=]+$')
+        && rated()
+        && ((isSelf(data().owner) && !blocked()) || isOwner());
+      allow delete: if isSelf(resource.data.owner) || isOwner();
     }
 
-    // コメント（各自が自分のドキュメントに最大150件。作成者は削除のために全員分を書ける）
-    match /comments/{uid} {
+    // ---------- コメント：cmts/<コメントID> ----------
+    match /cmts/{cid} {
       allow read: if true;
-      allow delete: if isOwner() || isSelf(uid);
-      allow create, update: if selfWrite(uid)
-        && request.resource.data.items is list
-        && request.resource.data.items.size() <= 150;
+      allow create: if isSelf(data().uid) && !blocked() && rated()
+        && data().keys().hasOnly(['uid', 'workId', 'text', 'at', 't'])
+        && str(cid, 1, 64) && str(data().workId, 3, 200)
+        && exists(/databases/$(database)/documents/pub/$(data().workId.replace(':', '__')))
+        && str(data().text, 1, 300) && data().at is int && data().t == request.time;
+      allow update: if false;
+      allow delete: if isSelf(resource.data.uid) || isOwner();
     }
 
-    // 通報
-    match /reports/{uid} {
+    // ---------- いいね・スーパーいいね：likes/<自分> ----------
+    function likesOk() {
+      let n = data();
+      let o = resource == null ? {} : resource.data;
+      let ow = o.get('works', {});
+      let os = o.get('supers', {});
+      let base = o.get('dn', 0) == jstDay() ? o.get('used', 0) : 0;
+      let ch = n.supers.diff(os).affectedKeys();
+      return n.keys().hasOnly(['works', 'supers', 'superAt', 'day', 'used', 'extra', 'g', 'dn', 'lastSup', 't'])
+        && n.g == true && n.extra == 0 && n.dn == jstDay() && n.t == request.time
+        && n.works is map && n.supers is map && n.superAt is map
+        && n.works.size() <= 3000 && n.supers.size() <= 3000 && n.superAt.size() <= 3000
+        && n.works.diff(ow).affectedKeys().size() <= 1
+        && (ch.size() == 0
+              ? n.used == base
+              : (n.used == base + 1 && n.used <= 1
+                 && n.lastSup is string && ch.hasOnly([n.lastSup])
+                 && !n.lastSup.matches(uid() + ':.*')
+                 && n.supers[n.lastSup] == os.get(n.lastSup, 0) + 1));
+    }
+    match /likes/{id} {
       allow read: if true;
-      allow write: if isOwner() || isSelf(uid);
+      allow create, update: if isSelf(id) && isGoogle() && likesOk()
+        && (resource == null || resource.data.get('t', request.time) + duration.value(1, 's') <= request.time);
+      allow delete: if isSelf(id) || isOwner();
     }
 
-    // 表示名
-    match /profiles/{uid} {
+    // ---------- 通報：reports/<自分> ----------
+    match /reports/{id} {
       allow read: if true;
-      allow write: if isSelf(uid)
-        && request.resource.data.name is string
-        && request.resource.data.name.size() <= 30;
+      allow create, update: if isSelf(id)
+        && data().keys().hasOnly(['items', 't']) && data().items is map
+        && data().items.size() <= 500 && data().t == request.time
+        && (resource == null || resource.data.get('t', request.time) + duration.value(1, 's') <= request.time);
+      allow delete: if isSelf(id) || isOwner();
     }
 
-    // NGワード・ブロックなどの管理設定（作成者だけ）
-    match /mod/{doc} {
+    // ---------- 表示名：profiles/<自分> ----------
+    match /profiles/{id} {
       allow read: if true;
-      allow write: if isOwner();
+      allow create, update: if isSelf(id) && !blocked()
+        && data().keys().hasOnly(['name', 't']) && str(data().name, 1, 30)
+        && data().t == request.time
+        && (resource == null || resource.data.get('t', request.time) + duration.value(5, 's') <= request.time);
+      allow delete: if isSelf(id) || isOwner();
     }
 
-    // 各自の帳簿（作品・パーツ）は本人だけが読み書きできる
-    match /data/users/{uid}/{rest=**} {
-      allow read, write: if isSelf(uid);
+    // ---------- 管理設定（作成者だけ） ----------
+    match /mod/settings {
+      allow read: if true;
+      allow write: if isOwner()
+        && data().keys().hasOnly(['words', 'ai', 'threshold', 'blocked', 'cleared'])
+        && data().words is list && data().words.size() <= 300
+        && data().blocked is map && data().cleared is map;
+    }
+
+    // ---------- 各自の帳簿（本人だけ） ----------
+    match /data/users/{id}/{doc} {
+      allow read, delete: if isSelf(id);
+      allow create, update: if isSelf(id) && str(doc, 1, 64)
+        && data().keys().hasOnly(['kind', 'name', 'note', 'items', 'extra', 'mode', 'rate', 'margin', 'fee', 'round',
+             'manualPrice', 'vis', 'photo', 'makeQty', 'createdAt', 'updatedAt', 'sample', 'price', 'qty', 'unit'])
+        && data().kind in ['part', 'work']
+        && str(data().get('name', ''), 0, 60) && str(data().get('note', ''), 0, 400)
+        && str(data().get('unit', ''), 0, 8)
+        && data().get('items', []) is list && data().get('items', []).size() <= 100
+        && str(data().get('photo', ''), 0, 250000);
     }
   }
 }
