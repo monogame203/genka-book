@@ -1,4 +1,4 @@
-<!doctype html><html><head><meta charset=utf8><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-S/LIBPwyEVRMii665e05zKEU8wMwCl7BVn8KPAR2Znc=' https://www.gstatic.com https://apis.google.com https://www.google.com https://www.recaptcha.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://www.gstatic.com https://*.googleusercontent.com; connect-src 'self' https://*.googleapis.com https://apis.google.com https://www.google.com https://www.recaptcha.net https://www.gstatic.com ; frame-src https://genka-book.firebaseapp.com https://accounts.google.com https://apis.google.com https://www.google.com https://www.recaptcha.net; base-uri 'none'; form-action 'none'; object-src 'none'"><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html><head><meta charset=utf8><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-pvacN/zZqcB2g8YeaBXwlXMmvGmkkLoDRfR12l5wou0=' https://www.gstatic.com https://apis.google.com https://www.google.com https://www.recaptcha.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://www.gstatic.com https://*.googleusercontent.com; connect-src 'self' https://*.googleapis.com https://apis.google.com https://www.google.com https://www.recaptcha.net https://www.gstatic.com ; frame-src https://genka-book.firebaseapp.com https://accounts.google.com https://apis.google.com https://www.google.com https://www.recaptcha.net; base-uri 'none'; form-action 'none'; object-src 'none'"><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>作品原価帳</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -364,6 +364,7 @@ function removeDoc(id){
 function failMsg(e){
   if(e&&e.code==='local_full')return 'この端末の保存容量がいっぱいです。写真を外すか、使わない作品を削除してください。';
   if(e&&e.code==='invalid_argument'){if(!S.owner&&!S.local){S.readOnly=true;enterLocal();S.editing=null;sched();return 'この端末に保存するモードに切り替えました。お手数ですが、もう一度入力して保存してください。';}return '保存できませんでした。';}
+  if(e&&e.code==='permission-denied'&&S.rulesOld)return S.owner?'保存できませんでした。Firestoreのルールが古いままです（画面上の案内を見てください）。':'保存できませんでした。ただいま設定を更新しています。しばらくしてからお試しください。';
   if(e&&e.code==='permission-denied')return S.mod.blocked[S.uid]?'書き込みが制限されています。':'保存できませんでした。入力内容が長すぎるか、続けて送りすぎています。少し待ってからもう一度お試しください。';
   if(e&&e.code==='resource-exhausted')return '今日の利用上限に達しました。時間をおいてお試しください。';
   if(e&&e.code==='quota_exceeded')return '保存容量がいっぱいです。不要なデータを削除してください。';
@@ -490,7 +491,12 @@ function view(D){
   if(!S.ready)return '<main class="wrap"><p class="lead">読み込み中…</p></main>';
   if(S.offline&&!S.local)return topbar()+'<main class="wrap"><section class="empty"><h2>ログインが必要です</h2><p class="lead">作品の表示とデータの保存には、Claudeアカウントでのログインが必要です。ログインしてから、このページを開き直してください。</p></section></main>';
   var nav=bnav();try{document.body.classList.toggle('has-bnav',!!nav);}catch(e){}
-  return topbar()+'<main class="wrap">'+body(D)+'</main>'+nav+(S.toastMsg?'<div class="toast" role="status">'+esc(S.toastMsg)+'</div>':'');
+  return topbar()+'<main class="wrap">'+rulesBanner()+body(D)+'</main>'+nav+(S.toastMsg?'<div class="toast" role="status">'+esc(S.toastMsg)+'</div>':'');
+}
+function rulesBanner(){
+  if(!S.rulesOld)return '';
+  return S.owner?'<div class="banner" style="border-left-color:var(--bad)"><b>Firestoreのルールが古いままです</b><span>このままでは、作品の公開・コメント・いいねが保存できません。Firebaseコンソールの Firestore Database →「ルール」に、GitHubの firestore.rules の全文を貼り付けて「公開」を押してください。</span></div>':
+    '<div class="banner" style="border-left-color:var(--warn)"><b>ただいま設定を更新しています</b><span>作品の公開・コメント・いいねは、しばらくの間保存できません。作品の帳簿は使えます。</span></div>';
 }
 function topbar(){
   var tabs=((S.uid&&!S.readOnly)||S.local)?[['works','作品'],['parts','パーツ'],['shop','仕入れ']]:[];
@@ -1284,6 +1290,8 @@ async function bootFirebase(cfg){
   var owners=(cfg.ownerEmails||[]).map(function(e){return String(e).trim().toLowerCase();});
   S.fb={auth:auth};S.fbMode=true;S.db=fs;S.user=fbUser(fs);
   S.uid=u.uid;S.owner=!!(u.email&&u.emailVerified&&owners.indexOf(u.email.toLowerCase())>=0);S.readOnly=false;
+  /* rate/<me> is readable only under the current rules; a refusal means the Firestore rules in the console are out of date */
+  fs.doc('rate/'+u.uid).get().then(function(){S.rulesOld=false;sched();},function(e){if(e&&e.code==='permission-denied'){S.rulesOld=true;sched();}});
   try{var pd=await fs.doc('profiles/'+u.uid).get();S.profileName=(pd.exists&&(pd.data()||{}).name)||'';}catch(e){S.profileName='';}
   S.nick=S.profileName||lsGet(LS_NICK)||'';
   S.tab='works';S.ready=true;sched();

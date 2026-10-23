@@ -7,3 +7,4 @@
 - `firestore.rules` は Firebase コンソールの Firestore → ルール に貼り付けて使います。
 - セキュリティ設定は [SETUP.md](SETUP.md) の「セキュリティ設定（強化版）」にあります。
 - `index.html` のスクリプトを書きかえたら `python3 tools/build.py` を実行してください（CSPの作り直し）。
+- テストは `tests/` にあります。GitHubにpushすると自動で実行されます（Actions の「テスト」）。

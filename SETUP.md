@@ -97,6 +97,24 @@
 `firestore.rules` の中身を全部、Firestore Database →「ルール」に貼り付けて「公開」。
 データの置き場所が変わったので、古いルールのままだと作品の公開やコメントができません。
 
+#### ルールの入力欄が操作できないとき：GitHubから自動で反映する
+ルールを手で貼る代わりに、GitHubにpushしたとき（テストが通ったあと）自動で反映できます。最初に1回だけ、次の設定をします。
+
+1. https://console.cloud.google.com/iam-admin/serviceaccounts?project=genka-book を開く
+2. 「サービスアカウントを作成」→ 名前に `rules-deployer` と入れて「作成して続行」
+3. 「ロールを選択」で次の2つを追加して「続行」→「完了」
+   - `Firebase Rules 管理者`（Firebase Rules Admin）
+   - `Service Usage ユーザー`（Service Usage Consumer）
+4. 一覧の `rules-deployer` を押す →「キー」タブ →「鍵を追加」→「新しい鍵を作成」→「JSON」→「作成」
+   - JSONファイルがダウンロードされます。**この中身は合鍵なので、人に見せたりチャットに貼ったりしないでください。**
+5. https://github.com/monogame203/genka-book/settings/secrets/actions を開く →「New repository secret」
+   - Name：`FIREBASE_SERVICE_ACCOUNT`
+   - Secret：ダウンロードしたJSONファイルの中身を全部貼る →「Add secret」
+6. ダウンロードしたJSONファイルは削除する
+7. https://github.com/monogame203/genka-book/actions を開き、「テスト」→「Run workflow」を押すと、テストのあとルールが反映されます
+
+この鍵でできるのは、ルールの反映だけです（データを読んだり消したりはできません）。
+
 ### 2. APIキーを、このページからしか使えないようにする（おすすめ）
 1. https://console.cloud.google.com/apis/credentials?project=genka-book を開く
 2. 「APIキー」の中の「Browser key (auto created by Firebase)」を押す
