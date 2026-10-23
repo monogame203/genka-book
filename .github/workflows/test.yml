@@ -1,8 +1,6 @@
 # pushするたびに、ルールとページのテストを自動で実行します。
-# テストが通ったら:
-#  - ページ（index.html と firebase-config.js だけ）を GitHub Pages に公開します
-#    （Settings → Pages の Source を「GitHub Actions」にしたときだけ。説明書やテストは公開しません）
-#  - Firestoreのルールを本番に反映します（FIREBASE_SERVICE_ACCOUNT を登録したときだけ）
+# テストが通ったら、ページ（index.html と firebase-config.js だけ）と Firestore のルールを
+# Firebase（https://genka-book.web.app）に反映します。FIREBASE_SERVICE_ACCOUNT を登録したときだけ動きます。
 name: テスト
 
 on:
@@ -34,11 +32,12 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm test
 
-  deploy-rules:
+  deploy:
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    concurrency: deploy
     env:
       SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
     steps:
@@ -46,41 +45,22 @@ jobs:
       - name: 鍵が登録されていなければ何もしない
         id: key
         run: |
-          if [ -z "$SA" ]; then echo "FIREBASE_SERVICE_ACCOUNT が未登録なので、ルールの自動反映はしません"; echo "ok=false" >> "$GITHUB_OUTPUT"; else echo "ok=true" >> "$GITHUB_OUTPUT"; fi
+          if [ -z "$SA" ]; then echo "FIREBASE_SERVICE_ACCOUNT が未登録なので、反映はしません"; echo "ok=false" >> "$GITHUB_OUTPUT"; else echo "ok=true" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/setup-node@v5
         if: steps.key.outputs.ok == 'true'
         with:
           node-version: 22
-      - name: Firestore のルールを反映
-        if: steps.key.outputs.ok == 'true'
-        run: |
-          printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
-          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
-          npx --yes firebase-tools@13.35.1 deploy --only firestore:rules --project genka-book --config firebase.json --non-interactive
-          rm -f "$RUNNER_TEMP/sa.json"
-
-  deploy-site:
-    needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v5
       - name: 公開するファイルだけを集める
+        if: steps.key.outputs.ok == 'true'
         run: |
           mkdir _site
           cp index.html firebase-config.js _site/
-          touch _site/.nojekyll
           ls -la _site
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v4
-        with:
-          path: _site
-      - id: deploy
-        uses: actions/deploy-pages@v4
+      - name: ページとルールを反映
+        if: steps.key.outputs.ok == 'true'
+        run: |
+          umask 077
+          printf '%s' "$SA" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          npx --yes firebase-tools@13.35.1 deploy --only hosting,firestore:rules --project genka-book --config firebase.json --non-interactive
+          rm -f "$RUNNER_TEMP/sa.json"

@@ -209,6 +209,21 @@ try {
   check('ルールが古いとき、ほかの人には「設定を更新しています」と出る', await until(gu2, async () => /設定を更新しています/.test(await gu2.locator('.banner').allTextContents().then(t => t.join()))));
   await setRules(fs.readFileSync(path.join(REPO, 'firestore.rules'), 'utf8'));
 
+  // ---------- 10. 公開サーバー（Firebase Hosting）の設定 ----------
+  {
+    const H = 'http://127.0.0.1:5050/';
+    const top = await fetch(H);
+    const html = await top.text();
+    check('公開サーバーでページが開ける', top.status === 200 && /作品原価帳/.test(html));
+    check('ほかのサイトへの埋め込みをヘッダーで拒否', top.headers.get('x-frame-options') === 'DENY' && /frame-ancestors 'none'/.test(top.headers.get('content-security-policy') || ''));
+    check('nosniff / Referrer-Policy / Permissions-Policy', top.headers.get('x-content-type-options') === 'nosniff' && !!top.headers.get('referrer-policy') && /camera=\(\)/.test(top.headers.get('permissions-policy') || ''));
+    check('ページは毎回最新を読む', /no-cache/.test(top.headers.get('cache-control') || ''));
+    for (const f of ['SETUP.md', 'firestore.rules', 'README.md', 'tests/e2e.test.mjs', 'firebase.json', 'tools/build.py']) {
+      check('公開されない: ' + f, (await fetch(H + f)).status === 404);
+    }
+    check('設定ファイルは公開される', (await fetch(H + 'firebase-config.js')).status === 200);
+  }
+
   check('CSP違反やスクリプトエラーがない', problems.length === 0, problems);
 } catch (e) {
   fail++; console.log('NG: テストが途中で止まりました —', e.message.split('\n')[0]);

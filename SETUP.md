@@ -1,6 +1,6 @@
 # 作品原価帳：誰でも使えるようにする設定（Firebase）
 
-このページを GitHub Pages で公開し、Firebase（Google の無料のデータ保存サービス）につなぐと、
+このページを Firebase Hosting で公開し、Firebase（Google の無料のデータ保存サービス）につなぐと、
 **リンクを開いた人なら誰でも** 作品の登録・公開・いいね・スーパーいいね・コメントができます。
 
 - 開いた人は自動で「ゲスト」としてログインします（登録不要）。データはそのブラウザに結びつきます。
@@ -23,7 +23,7 @@
    - **匿名**（ゲストとして使うため）
    - **Google**（作成者のログインと、端末をまたいだ同期のため）
 3. 「Settings」タブ →「承認済みドメイン」→「ドメインを追加」で次を追加
-   - `monogame203.github.io`
+   - （Firebase Hosting の `genka-book.web.app` と `genka-book.firebaseapp.com` は最初から入っています）
 
 ## 3. データベースを作る
 
@@ -51,13 +51,26 @@
 
 （この手順は、設定内容を Claude に貼り付けてもらえれば代わりに書き込みます）
 
-## 5. GitHub Pages で公開する
+## 5. 公開する（Firebase Hosting・自動）
 
-1. GitHub のリポジトリ →「Settings」→「Pages」
-2. 「Build and deployment」の Source を **「GitHub Actions」** にする
-3. 以後、pushしてテストが通ったときだけ、ページ（`index.html` と `firebase-config.js` だけ）が公開されます
-   - 説明書（このファイル）・ルール・テストは公開されません
-   - URL：`https://monogame203.github.io/genka-book/`
+ページは Firebase Hosting（無料）で公開します。URL：**https://genka-book.web.app**
+GitHub に push して自動テストが通ると、ページとルールが自動で反映されます。最初に1回だけ「合鍵」を登録します。
+
+1. https://console.cloud.google.com/iam-admin/serviceaccounts?project=genka-book を開く
+2. 「サービスアカウントを作成」→ 名前に `deployer` と入れて「作成して続行」
+3. 「ロールを選択」で次の3つを追加して「続行」→「完了」
+   - `Firebase Hosting 管理者`（Firebase Hosting Admin）
+   - `Firebase Rules 管理者`（Firebase Rules Admin）
+   - `Service Usage ユーザー`（Service Usage Consumer）
+4. 一覧の `deployer` を押す →「キー」タブ →「鍵を追加」→「新しい鍵を作成」→「JSON」→「作成」
+   - JSONファイルがダウンロードされます。**この中身は合鍵なので、人に見せたりチャットに貼ったりしないでください。**
+5. https://github.com/monogame203/genka-book/settings/secrets/actions →「New repository secret」
+   - Name：`FIREBASE_SERVICE_ACCOUNT`
+   - Secret：JSONファイルの中身を全部貼る →「Add secret」
+6. ダウンロードしたJSONファイルは削除する
+7. https://github.com/monogame203/genka-book/actions →「テスト」→「Run workflow」で、テストのあと公開されます
+
+この鍵でできるのは、ページとルールの反映だけです（データを読んだり消したりはできません）。
 
 ## 6. 動作確認
 
@@ -89,7 +102,9 @@
 | 作成者 | メール確認済みの、指定したGoogleアカウントだけ |
 | 写真 | JPEG形式・約180KBまで |
 | コメントのAIチェック | 送信前に必ずGeminiが確認。確認できないときは送信しない |
-| CSP | ページの中では、決められた場所（Google/Firebase）のプログラムしか動かない。ほかのサイトの中に埋め込まれると動かない |
+| CSP・ヘッダー | ページの中では、決められた場所（Google/Firebase）のプログラムしか動かない。ほかのサイトへの埋め込み禁止、HTTPS強制など |
+| 公開するファイル | ページ本体（index.html）と設定（firebase-config.js）だけ。説明書・ルール・テストは公開しない |
+| リポジトリ | 非公開（Private） |
 
 ## あなたがコンソールで行う設定
 
@@ -97,34 +112,17 @@
 `firestore.rules` の中身を全部、Firestore Database →「ルール」に貼り付けて「公開」。
 データの置き場所が変わったので、古いルールのままだと作品の公開やコメントができません。
 
-#### ルールの入力欄が操作できないとき：GitHubから自動で反映する
-ルールを手で貼る代わりに、GitHubにpushしたとき（テストが通ったあと）自動で反映できます。最初に1回だけ、次の設定をします。
-
-1. https://console.cloud.google.com/iam-admin/serviceaccounts?project=genka-book を開く
-2. 「サービスアカウントを作成」→ 名前に `rules-deployer` と入れて「作成して続行」
-3. 「ロールを選択」で次の2つを追加して「続行」→「完了」
-   - `Firebase Rules 管理者`（Firebase Rules Admin）
-   - `Service Usage ユーザー`（Service Usage Consumer）
-4. 一覧の `rules-deployer` を押す →「キー」タブ →「鍵を追加」→「新しい鍵を作成」→「JSON」→「作成」
-   - JSONファイルがダウンロードされます。**この中身は合鍵なので、人に見せたりチャットに貼ったりしないでください。**
-5. https://github.com/monogame203/genka-book/settings/secrets/actions を開く →「New repository secret」
-   - Name：`FIREBASE_SERVICE_ACCOUNT`
-   - Secret：ダウンロードしたJSONファイルの中身を全部貼る →「Add secret」
-6. ダウンロードしたJSONファイルは削除する
-7. https://github.com/monogame203/genka-book/actions を開き、「テスト」→「Run workflow」を押すと、テストのあとルールが反映されます
-
-この鍵でできるのは、ルールの反映だけです（データを読んだり消したりはできません）。
+ルールの入力欄が操作できないときは、上の「5. 公開する」で合鍵を登録すれば、pushのたびに自動で反映されます。
 
 ### 2. APIキーを、このページからしか使えないようにする（おすすめ）
 1. https://console.cloud.google.com/apis/credentials?project=genka-book を開く
 2. 「APIキー」の中の「Browser key (auto created by Firebase)」を押す
 3. 「アプリケーションの制限」で「ウェブサイト」を選び、次の2つを追加して保存
-   - `https://monogame203.github.io/*`
+   - `https://genka-book.web.app/*`
    - `https://genka-book.firebaseapp.com/*`
 
 ### 3. 承認済みドメインを整理する（おすすめ）
-Authentication →「設定」→「承認済みドメイン」に、次の3つ以外があれば削除します。
-- `monogame203.github.io`
+Authentication →「設定」→「承認済みドメイン」に、次の2つ以外があれば削除します（`monogame203.github.io` も、引っ越し後は削除）。
 - `genka-book.firebaseapp.com`
 - `genka-book.web.app`
 
