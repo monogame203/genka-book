@@ -136,6 +136,11 @@ service cloud.firestore {
       allow delete: if isSelf(id) || isOwner();
     }
 
+    // ---------- 作成者かどうかの確認（作成者だけが読める。中身はなくてよい） ----------
+    match /mod/ownercheck {
+      allow read: if isOwner();
+    }
+
     // ---------- 管理設定（作成者だけ） ----------
     match /mod/settings {
       allow read: if true;

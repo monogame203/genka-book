@@ -30,7 +30,7 @@
 1. 左メニュー「構築」→「Firestore Database」→「データベースを作成」
 2. 場所は `asia-northeast1（東京）` を選ぶ →「本番環境モード」で作成
 3. 「ルール」タブを開き、このリポジトリの `firestore.rules` の中身を全部貼り付ける
-4. `YOUR_EMAIL@gmail.com` を **あなたの Google アカウントのメールアドレス** に書き換えて「公開」
+4. `owners()` の行のメールアドレスが **あなたの Google アカウントのメールアドレス** になっているか確認して「公開」（作成者の判定はこのルールだけで行います。ページ側の設定には書きません）
 
 ## 3.5 コメントのAIチェック（Gemini）を有効にする
 
@@ -48,16 +48,16 @@
 2. アプリ名を入れて登録（Firebase Hosting はチェック不要）
 3. 表示される `const firebaseConfig = { ... }` の `{ ... }` の部分をコピー
 4. `firebase-config.js` を開き、`firebase: null,` を `firebase: { ...コピーした内容... },` に置き換える
-5. 同じファイルの `ownerEmails` の `YOUR_EMAIL@gmail.com` もあなたのメールアドレスに書き換える
 
 （この手順は、設定内容を Claude に貼り付けてもらえれば代わりに書き込みます）
 
 ## 5. GitHub Pages で公開する
 
 1. GitHub のリポジトリ →「Settings」→「Pages」
-2. 「Build and deployment」→ Source を「Deploy from a branch」、Branch を `main` / `/(root)` にして保存
-3. 数分後、次のURLで開けます
-   - `https://monogame203.github.io/genka-book/`
+2. 「Build and deployment」の Source を **「GitHub Actions」** にする
+3. 以後、pushしてテストが通ったときだけ、ページ（`index.html` と `firebase-config.js` だけ）が公開されます
+   - 説明書（このファイル）・ルール・テストは公開されません
+   - URL：`https://monogame203.github.io/genka-book/`
 
 ## 6. 動作確認
 

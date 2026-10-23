@@ -11,6 +11,8 @@ import {fileURLToPath} from 'url';
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const NM = fileURLToPath(new URL('./node_modules/firebase/', import.meta.url));
 const EMU = {auth: '127.0.0.1:9099', firestore: '127.0.0.1:8080'};
+// 作成者のメールアドレスは、ルールの owners() から読む
+const OWNER = fs.readFileSync(path.join(REPO, 'firestore.rules'), 'utf8').match(/function owners\(\) \{ return \['([^']+)'/)[1];
 
 let pass = 0, fail = 0;
 function check(name, ok, detail) {
@@ -67,9 +69,9 @@ await fetch(`http://${EMU.auth}/emulator/v1/projects/demo-genka/accounts`, {meth
 
 const fbSite = makeSite({
   firebase: {apiKey: 'demo-key', projectId: 'demo-genka', authDomain: 'demo-genka.firebaseapp.com'},
-  ownerEmails: ['liaowujiang940@gmail.com'], emulator: EMU,
+  emulator: EMU,
 }, ['http://' + EMU.firestore, 'http://' + EMU.auth]);
-const localSite = makeSite({firebase: null, ownerEmails: []}, []);
+const localSite = makeSite({firebase: null}, []);
 const fb = await serve(fbSite), local = await serve(localSite);
 
 const browser = await chromium.launch(process.env.CHROME_PATH ? {executablePath: process.env.CHROME_PATH} : {});
@@ -171,7 +173,7 @@ try {
 
   // ---------- 6. 作成者 ----------
   const o = await open('owner');
-  await google(o, 'owner1', 'liaowujiang940@gmail.com');
+  await google(o, 'owner1', OWNER);
   check('作成者には管理タブが出る', (await o.locator('.bnav [data-v=mod]').count()) === 1);
   await o.click('.bnav [data-v=gallery]');
   check('作成者からも、いいね1・コメント2が見える', await until(o, async () =>
@@ -201,7 +203,7 @@ try {
   const setRules = content => fetch(rulesUrl, {method: 'PUT', body: JSON.stringify({rules: {files: [{name: 'firestore.rules', content}]}})});
   await setRules("rules_version='2';service cloud.firestore{match /databases/{db}/documents{match /pub/{x}{allow read:if true;} match /likes/{x}{allow read:if true;} match /cmts/{x}{allow read:if true;} match /reports/{x}{allow read:if true;} match /mod/{x}{allow read:if true;}}}");
   const ow2 = await open('owner-old-rules');
-  await google(ow2, 'owner1', 'liaowujiang940@gmail.com');
+  await google(ow2, 'owner1', OWNER);
   check('ルールが古いと作成者に案内が出る', await until(ow2, async () => /ルールが古いまま/.test(await ow2.locator('.banner').allTextContents().then(t => t.join()))));
   const gu2 = await open('guest-old-rules');
   check('ルールが古いとき、ほかの人には「設定を更新しています」と出る', await until(gu2, async () => /設定を更新しています/.test(await gu2.locator('.banner').allTextContents().then(t => t.join()))));

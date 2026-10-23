@@ -27,8 +27,5 @@ window.GENKA_CONFIG = {
   aiModels: [],
 
   // App Check（reCAPTCHA v3）のサイトキー。SETUP.md の「App Check」の手順で作ったら、ここに貼ります。空なら使いません。
-  appCheckSiteKey: "",
-
-  // 作成者（管理タブを使う人）のGoogleアカウントのメールアドレス。firestore.rules にも同じものを書きます。
-  ownerEmails: ["liaowujiang940@gmail.com"]
+  appCheckSiteKey: ""
 };

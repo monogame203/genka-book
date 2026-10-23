@@ -4,13 +4,15 @@ import {initializeTestEnvironment,assertSucceeds,assertFails} from '@firebase/ru
 import {readFileSync} from 'fs';
 import {fileURLToPath} from 'url';
 const RULES=fileURLToPath(new URL('../firestore.rules',import.meta.url));
+// 作成者のメールアドレスは、ルールの owners() から読む
+const OWNER=readFileSync(RULES,'utf8').match(/function owners\(\) \{ return \['([^']+)'/)[1];
 import {doc,setDoc,getDoc,deleteDoc,writeBatch,serverTimestamp,updateDoc} from 'firebase/firestore';
 setLogLevel('silent');
 const env=await initializeTestEnvironment({projectId:'demo-genka',firestore:{rules:readFileSync(RULES,'utf8'),host:'127.0.0.1',port:8080}});
 await env.clearFirestore();
 const g=(id,email)=>env.authenticatedContext(id,{email:email||id+'@x.com',email_verified:true,firebase:{sign_in_provider:'google.com'}}).firestore();
 const anon=id=>env.authenticatedContext(id,{firebase:{sign_in_provider:'anonymous'}}).firestore();
-const owner=env.authenticatedContext('own',{email:'liaowujiang940@gmail.com',email_verified:true,firebase:{sign_in_provider:'google.com'}}).firestore();
+const owner=env.authenticatedContext('own',{email:OWNER,email_verified:true,firebase:{sign_in_provider:'google.com'}}).firestore();
 const out=env.unauthenticatedContext().firestore();
 let pass=0,fail=0;
 // t(説明, 書き込み, true=通るべき / false=止まるべき)
@@ -73,7 +75,10 @@ await t('profile too long',setDoc(doc(B,'profiles/bob'),{name:'x'.repeat(31),t:s
 await t('profile of other',setDoc(doc(B,'profiles/alice'),{name:'偽',t:serverTimestamp()}),false);
 await t('report ok',setDoc(doc(B,'reports/bob'),{items:{'alice:c1':true},t:serverTimestamp()}),true);
 await t('mod by non-owner',setDoc(doc(C,'mod/settings'),{words:[],ai:true,threshold:3,blocked:{},cleared:{}}),false);
-await t('mod unverified owner email',setDoc(doc(env.authenticatedContext('x',{email:'liaowujiang940@gmail.com',email_verified:false}).firestore(),'mod/settings'),{words:[],ai:true,threshold:3,blocked:{},cleared:{}}),false);
+await t('mod unverified owner email',setDoc(doc(env.authenticatedContext('x',{email:OWNER,email_verified:false}).firestore(),'mod/settings'),{words:[],ai:true,threshold:3,blocked:{},cleared:{}}),false);
+await t('owner check readable by owner',getDoc(doc(owner,'mod/ownercheck')),true);
+await t('owner check hidden from others',getDoc(doc(C,'mod/ownercheck')),false);
+await t('owner check hidden from guests',getDoc(doc(A,'mod/ownercheck')),false);
 await t('mod by owner (block bob)',setDoc(doc(owner,'mod/settings'),{words:[],ai:true,threshold:3,blocked:{bob:true},cleared:{}}),true);
 await sleep(5200);
 await t('blocked bob comments',rated(B,'bob',b=>b.set(doc(B,'cmts/c9'),cm('bob'))),false);
